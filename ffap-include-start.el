@@ -3,7 +3,7 @@
 ;; Copyright 2007, 2009, 2010 Kevin Ryde
 
 ;; Author: Kevin Ryde <user42@zip.com.au>
-;; Version: 8
+;; Version: 9
 ;; Keywords: files
 ;; URL: http://user42.tuxfamily.org/ffap-include-start/index.html
 ;; EmacsWiki: FindFileAtPoint
@@ -70,29 +70,46 @@
 ;; Version 6 - recognise gnu make include too
 ;; Version 7 - recognise gtk rc include too
 ;; Version 8 - undo defadvice on unload-feature
+;; Version 9 - speedup for big buffers
 
 
 ;;; Code:
 
 ;;;###autoload (eval-after-load "ffap" '(require 'ffap-include-start))
 
+;; for `ad-find-advice' macro when running uncompiled
+;; (don't unload 'advice before our -unload-function)
+(require 'advice)
+
 (defadvice ffap-string-at-point (around ffap-include-start activate)
   "Recognise various \"include /my/file/name.x\" with point at bol."
-  (require 'thingatpt)
-  ;; C and Gtk not anchored to start of line so they work commented out, but
-  ;; the Make one would be too ambiguous not at the start of a line.
-  ;; Actually # is the RC comment, so commented out it looks like C, eg.
+
+  ;; The C and GtkRc patterns are not anchored to start of line so they work
+  ;; commented out.  # is the RC comment char, so a commented out RC looks
+  ;; like a C #include, eg.
+  ;;
   ;;     # don't use this for now
   ;;     # include "foo.rc"
-  ;; 
-  (if (or (thing-at-point-looking-at "include[ \t]+\"\\([^ \t\r\n\"]+\\)\"")
-          (thing-at-point-looking-at "^include[ \t]+\\([^ \t\r\n]+\\)")
-          (thing-at-point-looking-at "#[ \t]*include[ \t]+[\"<]\\([^\">\r\n]+\\)\\([\">]\\|$\\)"))
+  ;;
+  ;; The Make pattern is anchored to the start of a line as it would be too
+  ;; ambiguous not at the start of a line.
+  ;;
+  ;; Narrowing to the current line is a speedup for big buffers.  It limits
+  ;; the amount of searching forward and back that thing-at-point-looking-at
+  ;; does when it works-around the way re-search-backward won't match across
+  ;; point.
+  ;;
+  (require 'thingatpt)
+  (if (save-restriction
+        (narrow-to-region (line-beginning-position) (line-end-position))
+        (or (thing-at-point-looking-at "include[ \t]+\"\\([^ \t\r\n\"]+\\)\"")
+            (thing-at-point-looking-at "^include[ \t]+\\([^ \t\r\n]+\\)")
+            (thing-at-point-looking-at "#[ \t]*include[ \t]+[\"<]\\([^\">\r\n]+\\)\\([\">]\\|$\\)")))
       (progn
         (setq ffap-string-at-point-region (list (match-beginning 1)
                                                 (match-end 1)))
         (setq ad-return-value
-              (setq ffap-string-at-point
+              (setq ffap-string-at-point ;; and return the value
                     (buffer-substring-no-properties (match-beginning 1)
                                                     (match-end 1)))))
     ad-do-it))
