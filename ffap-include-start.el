@@ -1,10 +1,10 @@
 ;;; ffap-include-start.el --- recognise C #include when at start of line
 
-;; Copyright 2007, 2009, 2010 Kevin Ryde
+;; Copyright 2007, 2009, 2010, 2011, 2013 Kevin Ryde
 
 ;; Author: Kevin Ryde <user42@zip.com.au>
-;; Version: 9
-;; Keywords: files
+;; Version: 10
+;; Keywords: files, ffap, C, make, gtk
 ;; URL: http://user42.tuxfamily.org/ffap-include-start/index.html
 ;; EmacsWiki: FindFileAtPoint
 
@@ -29,11 +29,11 @@
 ;;     #include <foo.h>
 ;;
 ;; when point is on the filename part.  This spot of code lets it work when
-;; point in the "#include" part, including at the start of the line, and
-;; lets it work with any of the following,
+;; point in the "#include" part.  The following forms are supported,
 ;;
 ;;     #include <foo.h>       C language
 ;;     #include "foo.h"       C language
+;;     @include "foo.awk"     GNU Awk
 ;;     include foo.make       GNU Make
 ;;     include "foo.rc"       Gtk RC file
 ;;
@@ -41,17 +41,19 @@
 ;; it's handy to have it work from the start of the line too, especially
 ;; when just browsing rather than editing.
 ;;
-;; For a GNU make multiple-file include like
+;; GNU Make can do a multiple-file include.  The first filename is offered
+;; when point is on the include.  Move point to the second name to get that.
 ;;
 ;;     include foo.make bar.make
 ;;
-;; the first filename is offered when point is at or before the first name,
-;; and the second when point is on it.
-;;
-;; This code works with ffap-makefile-vars.el too, so if you load that
-;; package then the a Make include can have variables to expand,
+;; This code works with ffap-makefile-vars.el.  If you load that package
+;; then a GNU Make include can have variables to expand,
 ;;
 ;;     include $(HOME)/mystuff/foo.make
+
+;;; Emacsen:
+
+;; Designed for Emacs 20 up and XEmacs 21 up.
 
 ;;; Install:
 
@@ -71,40 +73,52 @@
 ;; Version 7 - recognise gtk rc include too
 ;; Version 8 - undo defadvice on unload-feature
 ;; Version 9 - speedup for big buffers
+;; Version 10 - add gnu awk @include
 
 
 ;;; Code:
 
 ;;;###autoload (eval-after-load "ffap" '(require 'ffap-include-start))
 
-;; for `ad-find-advice' macro when running uncompiled
-;; (don't unload 'advice before our -unload-function)
+;; Explicit dependency on advice.el since
+;; `ffap-include-start-unload-function' needs `ad-find-advice' macro when
+;; running not byte compiled, and that macro is not autoloaded.
 (require 'advice)
 
 (defadvice ffap-string-at-point (around ffap-include-start activate)
-  "Recognise various \"include /my/file/name.x\" with point at bol."
+  "Recognise various \"include /my/file/name.x\" with point on the \"include\"."
 
-  ;; The C and GtkRc patterns are not anchored to start of line so they work
-  ;; commented out.  # is the RC comment char, so a commented out RC looks
-  ;; like a C #include, eg.
-  ;;
-  ;;     # don't use this for now
-  ;;     # include "foo.rc"
-  ;;
-  ;; The Make pattern is anchored to the start of a line as it would be too
-  ;; ambiguous not at the start of a line.
-  ;;
-  ;; Narrowing to the current line is a speedup for big buffers.  It limits
-  ;; the amount of searching forward and back that thing-at-point-looking-at
-  ;; does when it works-around the way re-search-backward won't match across
-  ;; point.
-  ;;
   (require 'thingatpt)
   (if (save-restriction
+        ;; Narrow to the current line as a speedup for big buffers.  This
+        ;; limits the amount of searching forward and back that
+        ;; `thing-at-point-looking-at' does when it works-around the way
+        ;; `re-search-backward' doesn't match across point.
+        ;;
         (narrow-to-region (line-beginning-position) (line-end-position))
-        (or (thing-at-point-looking-at "include[ \t]+\"\\([^ \t\r\n\"]+\\)\"")
-            (thing-at-point-looking-at "^include[ \t]+\\([^ \t\r\n]+\\)")
-            (thing-at-point-looking-at "#[ \t]*include[ \t]+[\"<]\\([^\">\r\n]+\\)\\([\">]\\|$\\)")))
+
+        (or
+         ;;  GNU Awk    @include "foo.awk"
+         ;; Normally at the start of a line, but allow elsewhere in case
+         ;; commented out.  Spaces and tabs work after the @.  Dunno if
+         ;; that's a documented gawk feature but allow it here.
+         (thing-at-point-looking-at "@[ \t]*include[ \t]+\"\\([^ \t\r\n\"]+\\)\\(\"\\|$\\)")
+
+         ;;  Gtk RC     include "foo.rc"
+         ;; Normally at the start of a line, but allow it elsewhere in case
+         ;; commented out.  Commented out with "#" will in fact look like a
+         ;; C #include.
+         (thing-at-point-looking-at "include[ \t]+\"\\([^ \t\r\n\"]+\\)\\(\"\\|$\\)")
+
+         ;;  GNU Make     include foo.make
+         ;; This is only at the start of a line because an unquoted filename
+         ;; would be too ambiguous in the middle of a line.
+         (thing-at-point-looking-at "^include[ \t]+\\([^ \t\r\n]+\\)")
+
+         ;; C/C++        #include "foo.h"
+         ;;              #include <foo.h>
+         (thing-at-point-looking-at "#[ \t]*include[ \t]+[\"<]\\([^\">\r\n]+\\)\\([\">]\\|$\\)")))
+
       (progn
         (setq ffap-string-at-point-region (list (match-beginning 1)
                                                 (match-end 1)))
@@ -115,6 +129,8 @@
     ad-do-it))
 
 (defun ffap-include-start-unload-function ()
+  "Remove defadvice from `ffap-string-at-point'.
+This is called by `unload-feature'."
   (when (ad-find-advice 'ffap-string-at-point 'around 'ffap-include-start)
     (ad-remove-advice   'ffap-string-at-point 'around 'ffap-include-start)
     (ad-activate        'ffap-string-at-point))
