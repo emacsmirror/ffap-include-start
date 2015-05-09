@@ -1,9 +1,9 @@
 ;;; ffap-include-start.el --- recognise C #include when at start of line
 
-;; Copyright 2007, 2009, 2010, 2011, 2013 Kevin Ryde
+;; Copyright 2007, 2009, 2010, 2011, 2013, 2015 Kevin Ryde
 
-;; Author: Kevin Ryde <user42@zip.com.au>
-;; Version: 10
+;; Author: Kevin Ryde <user42_kevin@yahoo.com.au>
+;; Version: 11
 ;; Keywords: files, ffap, C, make, gtk
 ;; URL: http://user42.tuxfamily.org/ffap-include-start/index.html
 ;; EmacsWiki: FindFileAtPoint
@@ -61,6 +61,9 @@
 ;; following in your .emacs
 ;;
 ;;     (eval-after-load "ffap" '(require 'ffap-include-start))
+;;
+;; There's an autoload cookie for this below if you install via
+;; `M-x package-install' or know how to use `update-file-autoloads'.
 
 ;;; History:
 ;; 
@@ -74,7 +77,7 @@
 ;; Version 8 - undo defadvice on unload-feature
 ;; Version 9 - speedup for big buffers
 ;; Version 10 - add gnu awk @include
-
+;; Version 11 - new email
 
 ;;; Code:
 
@@ -135,6 +138,10 @@ This is called by `unload-feature'."
     (ad-remove-advice   'ffap-string-at-point 'around 'ffap-include-start)
     (ad-activate        'ffap-string-at-point))
   nil) ;; and do normal unload-feature actions too
+
+;;-----------------------------------------------------------------------------
+
+;; LocalWords: foo Awk awk rc Gtk vars mystuff
 
 (provide 'ffap-include-start)
 
